@@ -1,0 +1,26 @@
+[
+    {
+        "email": "iamroot@wxdata.com",
+        "username": "iamroot",
+        "password": "fearme",
+        "roles": [
+            "admin"
+        ]
+    },
+    {
+        "email": "readonly1@wxdata.com",
+        "username": "readonly1",
+        "password": "imnotthatbad",
+        "roles": [
+            "readonly"
+        ]
+    },
+    {
+        "email": "writer1@wxdata.com",
+        "username": "writer1",
+        "password": "bevewycareful",
+        "roles": [
+            "write"
+        ]
+    }
+]

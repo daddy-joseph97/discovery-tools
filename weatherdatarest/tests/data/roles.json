@@ -1,0 +1,14 @@
+[
+    {
+        "role": "readonly",
+        "description": "read only access"
+    },
+    {
+        "role": "write",
+        "description": "write access"
+    },
+    {
+        "role": "admin",
+        "description": "administration access"
+    }
+]
