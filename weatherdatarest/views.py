@@ -2,52 +2,20 @@
 """
 from pyramid.exceptions import Forbidden
 from cornice import Service
+from cornice.resource import resource, view
+from webob import exc
 
 
 api_prefix = '/api/v0.1/'
-wx_hourly = Service(name='Hourly Observations',
-                    path='/{}/{}'.format(api_prefix, 'hourly').replace('//', '/'),
-                    description="NOAA NCDC Data - Hourly Observations")
-wx_precip = Service(name='Hourly Precipitation',
-                    path='/{}/{}'.format(api_prefix, 'precip').replace('//', '/'),
-                    description="NOAA NCDC Data - Hourly Precipitation")
-users = Service(name='Service Users',
-                path='/{}/{}'.format(api_prefix, 'users').replace('//', '/'),
-                description="API users")
-
-#
-# Helpers
-#  
-#def _create_token():
-    #return binascii.b2a_hex(os.urandom(20))
-
-
-#class _401(exc.HTTPError):
-    #def __init__(self, msg='Unauthorized'):
-        #body = {'status': 401, 'message': msg}
-        #Response.__init__(self, json.dumps(body))
-        #self.status = 401
-        #self.content_type = 'application/json'
-
-
-#def valid_token(request):
-    #header = 'X-Messaging-Token'
-    #token = request.headers.get(header)
-    #if token is None:
-        #raise _401()
-
-    #token = token.split('-')
-    #if len(token) != 2:
-        #raise _401()
-
-    #user, token = token
-
-    #valid = user in _USERS and _USERS[user] == token
-    #if not valid:
-        #raise _401()
-
-    #request.validated['user'] = user
-
+#wx_hourly = Service(name='Hourly Observations',
+                    #path='/{}/{}'.format(api_prefix, 'hourlyrecordings').replace('//', '/'),
+                    #description="NOAA NCDC Data - Hourly Observations")
+#wx_precip = Service(name='Hourly Precipitation',
+                    #path='/{}/{}'.format(api_prefix, 'preciprecordings').replace('//', '/'),
+                    #description="NOAA NCDC Data - Hourly Precipitation")
+#users = Service(name='Service Users',
+                #path='/{}/{}'.format(api_prefix, 'users').replace('//', '/'),
+                #description="API users")
 
 def unique(request):
     name = request.body
@@ -65,13 +33,41 @@ def unique(request):
 #
 # User Management
 #
-@users.get()
-def get_users(request):
-    """Returns a list of all users."""
-    users_cur = request.db.users.find(fields={'_id': False,
-                                              'password_hash': False})
+#@resource(collection_path='/{}/{}'.format(api_prefix, 'users').replace('//', '/'),
+          #path='/{}/{}'.format(api_prefix, '/users/{id}').replace('//', '/'))
+@resource(collection_path='/{}/{}'.format(api_prefix, 'users').replace('//', '/'),
+          path='/api/v0.1/users/{username}')         
+class User(object):
+    def __init__(self, request):
+        self.request = request
+        
+    def collection_get(self):
+        """Returns a list of all users.
+        
+        """
+        users_cur = self.request.db.users.find(fields={'_id': False,
+                                                       'password_hash': False})
+        
+        return {'users': [x for x in users_cur]}
+
+    @view(renderer='json')
+    def get(self):
+        """Return single user by username.  Note that it will be returned as a
+        single resource (not list) and not as the value of 'users' as with the
+        collection GET.
+        
+        """
+        username = self.request.matchdict['username']
+        user = self.request.db.users.find_one({'username': username},
+                                              fields={'_id': False,
+                                                      'password_hash': False}                                              )
+        
+        if user is None:
+            msg = 'User with username \'{}\' not found.'
+            raise exc.HTTPNotFound(msg.format(username))
+        
+        return user
     
-    return {'users': [x for x in users_cur]}
 
 #@users.post(validators=unique)
 #def create_user(request):
@@ -90,25 +86,83 @@ def get_users(request):
 #
 # Hourly weather observations
 #
-@wx_hourly.get()
-def get_records(request):
-    """Return a list of hourly weather records (observations). Limit to 10 for now.
-    
-    """
-    records_cur = request.db.hourly.find(fields={'_id': False,},
-                                         limit=10)
+@resource(collection_path='/{}/{}'.format(api_prefix, 'hourlyrecordings').replace('//', '/'),
+          path='/api/v0.1/hourlyrecordings/{wban}')
+class HourlyWxReadings(object):
+    def __init__(self, request):
+        self.request = request
         
-    return {'records': [x for x in records_cur]}
+    def collection_get(self):
+        """Returns a list of all hourly recordings.
+        
+        .. note: currently defaulted with limit of 5 and unsorted
+        
+        """
+        limit = int(self.request.GET.get('limit', 5))
+        wban = self.request.GET.get('wban', None)
+        recordings_cur = self.request.db.hourly.find({'WBAN': wban},
+                                                     fields={'_id': False},
+                                                     limit=limit)
+        
+        return {'hourly_recordings': [x for x in recordings_cur]}
+
+    def get(self):
+        """Return latest recording at WBAN.  Note that it will be returned as a
+        single resource (not list) and not as the value of 'hourly_recordings' as
+        with the collection GET.
+        
+        .. note: currenly returning any (pymongo find_one) result with supplied
+            WBAN
+        
+        """
+        wban = self.request.matchdict['wban']
+        recording = self.request.db.hourly.find_one({'WBAN': wban},
+                                                    fields={'_id': False,})
+        
+        if recording is None:
+            msg = 'Reading from WBAN station \'{}\' not found.'
+            raise exc.HTTPNotFound(msg.format(wban))
+        
+        return recording
 
 #
 # Hourly precipitation
 #
-@wx_precip.get()
-def get_records(request):
-    """Return a list of hourly precipitation records. Limit to 10 for now.
-    
-    """
-    records_cur = request.db.precip.find(fields={'_id': False,},
-                                         limit=10)
-    
-    return {'records': [x for x in records_cur]}
+@resource(collection_path='/{}/{}'.format(api_prefix, 'preciprecordings').replace('//', '/'),
+          path='/api/v0.1/preciprecordings/{wban}')
+class HourlyPrecipReadings(object):
+    def __init__(self, request):
+        self.request = request
+        
+    def collection_get(self):
+        """Returns a list of all hourly precipitation recordings.
+        
+        .. note: currently defaulted with limit of 5 and unsorted
+        
+        """
+        limit = int(self.request.GET.get('limit', 5))
+        wban = self.request.GET.get('wban', None)
+        recordings_cur = self.request.db.precip.find({'WBAN': wban},
+                                                     fields={'_id': False},
+                                                     limit=limit)
+        
+        return {'precip_recordings': [x for x in recordings_cur]}
+
+    def get(self):
+        """Return latest precipitation recording at WBAN.  Note that it will be
+        returned as a single resource (not list) and not as the value of
+        'precip_recordings' as with the collection GET.
+        
+        .. note: currenly returning any (pymongo find_one) result with supplied
+            WBAN
+        
+        """
+        self.request.matchdict['wban']
+        recording = self.request.db.precip.find_one({'WBAN': wban},
+                                                    fields={'_id': False,})
+        
+        if recording is None:
+            msg = 'Reading from WBAN station \'{}\' not found.'
+            raise exc.HTTPNotFound(msg.format(wban))
+        
+        return recording
